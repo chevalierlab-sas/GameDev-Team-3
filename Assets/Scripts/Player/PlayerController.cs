@@ -47,7 +47,7 @@ public class PlayerMovement : MonoBehaviour
 
     private void Update()
     {
-        isSprinting = Input.GetKey(sprintKey) && grounded;
+        isSprinting = Input.GetKey(sprintKey);
         if (animator != null) {
             animator.SetBool("isGrounded", grounded);
             animator.SetBool("isWalking", horizontalInput != 0 || verticalInput != 0 && !isSprinting);
@@ -106,7 +106,6 @@ public class PlayerMovement : MonoBehaviour
         // on ground
         if (grounded)
             rb.AddForce(moveDirection.normalized * moveSpeed * 10f, ForceMode.Force);
-
         // in air
         else if (!grounded)
             rb.AddForce(moveDirection.normalized * moveSpeed * 10f * airMultiplier, ForceMode.Force);
