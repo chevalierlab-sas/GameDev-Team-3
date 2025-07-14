@@ -14,8 +14,11 @@ public class PlayerMovement : MonoBehaviour
     public float jumpForce;
     public float jumpCooldown;
     public float airMultiplier;
-    bool readyToJump;
-    bool isSprinting;
+    public int jumpCount = 1;
+    private int jumpCountLeft;
+    private bool readyToJump;
+    private bool isSprinting;
+    
 
     [Header("Keybinds")]
     public KeyCode jumpKey = KeyCode.Space;
@@ -24,11 +27,15 @@ public class PlayerMovement : MonoBehaviour
     [Header("Ground Check")]
     public float playerHeight;
     public LayerMask whatIsGround;
+    public LayerMask whatIsVoid;
     bool grounded;
 
     [Header("Animator")]
     public Animator animator;
     public Transform orientation;
+
+    // private variables
+    private Vector3 lastPosition;
 
     float horizontalInput;
     float verticalInput;
@@ -43,29 +50,40 @@ public class PlayerMovement : MonoBehaviour
         rb.freezeRotation = true;
 
         readyToJump = true;
+        jumpCountLeft = jumpCount;
     }
 
     private void Update()
     {
         isSprinting = Input.GetKey(sprintKey);
         if (animator != null) {
+            animator.SetBool("isIdle", horizontalInput == 0 && verticalInput == 0 && grounded);
             animator.SetBool("isGrounded", grounded);
             animator.SetBool("isWalking", horizontalInput != 0 || verticalInput != 0 && !isSprinting);
             animator.SetBool("isRunning", horizontalInput != 0 || verticalInput != 0 && isSprinting);
             animator.SetBool("isJumping", !grounded);
         }
 
-        // ground check
         grounded = Physics.Raycast(transform.position, Vector3.down, playerHeight * 0.5f + 0.3f, whatIsGround);
 
         MyInput();
         SpeedControl();
 
-        // handle drag
+        if (!grounded & Physics.Raycast(transform.position, Vector3.down, playerHeight * 0.5f + 0.3f, whatIsVoid))
+        {
+            transform.position = lastPosition;
+            rb.linearVelocity = Vector3.zero;
+        }
         if (grounded)
+        {
             rb.linearDamping = groundDrag;
+            lastPosition = transform.position;
+            jumpCountLeft = jumpCount; // reset jump count when grounded
+        }
         else
+        {
             rb.linearDamping = 0;
+        }
     }
 
     private void FixedUpdate()
@@ -78,11 +96,10 @@ public class PlayerMovement : MonoBehaviour
         horizontalInput = Input.GetAxisRaw("Horizontal");
         verticalInput = Input.GetAxisRaw("Vertical");
 
-        // when to jump
-        if (Input.GetKey(jumpKey) && readyToJump && grounded)
+        if (Input.GetKey(jumpKey) && readyToJump && grounded && jumpCountLeft > 0)
         {
             readyToJump = false;
-
+            jumpCountLeft--;
             Jump();
 
             Invoke(nameof(ResetJump), jumpCooldown);
