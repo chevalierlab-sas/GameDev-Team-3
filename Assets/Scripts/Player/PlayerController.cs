@@ -18,6 +18,7 @@ public class PlayerMovement : MonoBehaviour
     private int jumpCountLeft;
     private bool readyToJump;
     private bool isSprinting;
+    private bool wasSprinting;
     
 
     [Header("Keybinds")]
@@ -43,6 +44,7 @@ public class PlayerMovement : MonoBehaviour
     Vector3 moveDirection;
 
     Rigidbody rb;
+    RaycastHit hit;
 
     private void Start()
     {
@@ -55,21 +57,50 @@ public class PlayerMovement : MonoBehaviour
 
     private void Update()
     {
-        isSprinting = Input.GetKey(sprintKey);
-        if (animator != null) {
+        if (!wasSprinting)
+        {
+            isSprinting = Input.GetKey(sprintKey) && grounded && (horizontalInput != 0 || verticalInput != 0);   
+        }
+
+        if (animator != null)
+        {
             animator.SetBool("isIdle", horizontalInput == 0 && verticalInput == 0 && grounded);
             animator.SetBool("isGrounded", grounded);
             animator.SetBool("isWalking", horizontalInput != 0 || verticalInput != 0 && !isSprinting);
             animator.SetBool("isRunning", horizontalInput != 0 || verticalInput != 0 && isSprinting);
             animator.SetBool("isJumping", !grounded);
+            animator.SetBool("isFalling", rb.linearVelocity.y < -15 && !grounded);
         }
 
-        grounded = Physics.Raycast(transform.position, Vector3.down, playerHeight * 0.5f + 0.3f, whatIsGround);
+        // print("isIdle : " + animator.GetBool("isIdle"));
+        // print("isGrounded : " + animator.GetBool("isGrounded"));
+        // print("isWalking : " + animator.GetBool("isWalking"));
+        // print("isRunning : " + animator.GetBool("isRunning"));
+        // print("isJumping : " + animator.GetBool("isJumping"));
+        // print("isFalling : " + animator.GetBool("isFalling"));
+
+        // ground check
+        grounded = Physics.SphereCast(
+            transform.position,  
+            0.3f,                
+            Vector3.down,        
+            out hit,
+            playerHeight * 0.5f + 0.3f,
+            whatIsGround
+        );
 
         MyInput();
         SpeedControl();
 
-        if (!grounded & Physics.Raycast(transform.position, Vector3.down, playerHeight * 0.5f + 0.3f, whatIsVoid))
+        if (!grounded &
+        Physics.SphereCast(
+            transform.position,  
+            0.3f,                
+            Vector3.down,        
+            out hit,
+            playerHeight * 0.5f + 0.3f,
+            whatIsVoid
+        ))
         {
             transform.position = lastPosition;
             rb.linearVelocity = Vector3.zero;
@@ -98,6 +129,11 @@ public class PlayerMovement : MonoBehaviour
 
         if (Input.GetKey(jumpKey) && readyToJump && grounded && jumpCountLeft > 0)
         {
+            wasSprinting = isSprinting;
+            if (jumpCountLeft == jumpCount && wasSprinting)
+            {
+                isSprinting = wasSprinting;
+            }
             readyToJump = false;
             jumpCountLeft--;
             Jump();
