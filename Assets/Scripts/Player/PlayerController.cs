@@ -2,6 +2,7 @@ using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 using TMPro;
+using UnityEngine.UI;
 
 public class PlayerController : MonoBehaviour
 {
@@ -32,6 +33,10 @@ public class PlayerController : MonoBehaviour
 
     [Header("UI")]
     public GameObject deathUI;
+    public GameObject healthUI;
+    public Image damagedUI;
+    private GameObject healthIndicator;
+    private TextMeshProUGUI healthText;
 
     [Header("Keybinds")]
     public KeyCode jumpKey = KeyCode.Space;
@@ -57,6 +62,9 @@ public class PlayerController : MonoBehaviour
     float horizontalInput;
     float verticalInput;
 
+    int fallDamageThreshold = 15;
+    int fallDamage = 0;
+
     Vector3 moveDirection;
 
     Rigidbody rb;
@@ -70,6 +78,9 @@ public class PlayerController : MonoBehaviour
         readyToJump = true;
         jumpCountLeft = jumpCount;
         health = maxHealth;
+
+        healthIndicator = healthUI.transform.Find("Indicator").gameObject;
+        healthText = healthUI.transform.Find("HPLeft").GetComponent<TextMeshProUGUI>();
     }
 
     private void Update()
@@ -84,14 +95,24 @@ public class PlayerController : MonoBehaviour
             animator.SetBool("isRunning", horizontalInput != 0 || verticalInput != 0 && isSprinting);
             animator.SetBool("isJumping", !grounded);
             animator.SetBool("isFalling", rb.linearVelocity.y < -15 && !grounded);
+            animator.SetBool("isMinFalling", rb.linearVelocity.y < -8 && !grounded);
             animator.SetBool("AbleToLand", rb.linearVelocity.y > -15 && !grounded);
             animator.SetBool("isDead", health <= 0);
+
+            if (animator.GetBool("isMinFalling"))
+            {
+                fallDamage = Mathf.Max(0, fallDamageThreshold - (int)(rb.linearVelocity.y / 10));
+            }
         }
 
         if (health <= 0)
         {
             Died();
         }
+
+        // Update health UI
+        healthText.text = health.ToString() + "%";
+        healthIndicator.transform.localScale = new Vector3(health / (float)maxHealth, 1, 1);
 
         // print("isIdle : " + animator.GetBool("isIdle"));
         // print("isGrounded : " + animator.GetBool("isGrounded"));
@@ -123,7 +144,7 @@ public class PlayerController : MonoBehaviour
 
         if (!grounded & voided)
         {
-            TakeDamage(maxHealth); 
+            TakeDamage(maxHealth);
         }
         if (grounded)
         {
@@ -135,15 +156,61 @@ public class PlayerController : MonoBehaviour
             rb.linearDamping = 0;
         }
     }
+    public float flashDuration = 0.5f; 
+    private Coroutine flashCoroutine;
 
     public void TakeDamage(int amount)
     {
+        if (health <= 0) return; 
         health -= amount;
+
+        FlashDamage();
+    }
+
+     public void FlashDamage()
+    {
+        if (flashCoroutine != null)
+            StopCoroutine(flashCoroutine);
+
+        flashCoroutine = StartCoroutine(FlashRoutine());
+    }
+
+    private IEnumerator FlashRoutine()
+    {
+        float elapsed = 0f;
+        Color color = damagedUI.color;
+
+        float tempSprintSpeed = sprintSpeed;
+        float tempMoveSpeed = moveSpeed;
+
+        sprintSpeed = 0f;
+        moveSpeed = 0f;
+
+        float startAlpha = 0.7f;
+        damagedUI.color = new Color(color.r, color.g, color.b, startAlpha);
+
+        while (elapsed < flashDuration)
+        {
+            elapsed += Time.deltaTime;
+            float alpha = Mathf.Lerp(startAlpha, 0f, elapsed / flashDuration);
+            damagedUI.color = new Color(color.r, color.g, color.b, alpha);
+            yield return null;
+        }
+
+        damagedUI.color = new Color(color.r, color.g, color.b, 0f);
+
+        sprintSpeed = tempSprintSpeed;
+        moveSpeed = tempMoveSpeed;
     }
 
     public int GetHealth()
     {
         return health;
+    }
+
+    public Animator GetAnimator()
+    {
+        return animator;
     }
 
     private void FixedUpdate()
@@ -172,6 +239,11 @@ public class PlayerController : MonoBehaviour
         }
     }
 
+    public bool IsGrounded()
+    {
+        return grounded;
+    }
+
     private void MovePlayer()
     {
         if (health <= 0)
@@ -180,25 +252,42 @@ public class PlayerController : MonoBehaviour
             return;
         }
 
-        // calculate movement direction
-        moveDirection = orientation.forward * verticalInput + orientation.right * horizontalInput;
+        Vector3 rawDirection = orientation.forward * verticalInput + orientation.right * horizontalInput;
 
-        if (isSprinting || wasSprinting)
+        if (rawDirection.sqrMagnitude > 0.01f)
         {
-            rb.AddForce(moveDirection.normalized * sprintSpeed * 10f, ForceMode.Force);
+            RaycastHit wallHit;
+
+            Vector3 rayOrigin = transform.position + Vector3.up * 0.5f;
+
+            if (Physics.Raycast(rayOrigin, rawDirection.normalized, out wallHit, 0.6f, whatIsGround))
+            {
+
+                rawDirection = Vector3.ProjectOnPlane(rawDirection, wallHit.normal);
+            }
+        }
+
+        moveDirection = rawDirection.normalized;
+
+        float currentSpeed = (isSprinting || wasSprinting) ? sprintSpeed : moveSpeed;
+
+        if (grounded)
+        {
+            rb.linearDamping = 5f;
+            rb.AddForce(moveDirection * currentSpeed * 10f, ForceMode.Force);
         }
         else
         {
-            rb.AddForce(moveDirection.normalized * moveSpeed * 10f, ForceMode.Force);
+            rb.linearDamping = 0f;
+            rb.AddForce(moveDirection * currentSpeed * 10f * airMultiplier, ForceMode.Force);
         }
-
-        // on ground
-        if (grounded)
-            rb.AddForce(moveDirection.normalized * moveSpeed * 10f, ForceMode.Force);
-        // in air
-        else if (!grounded)
-            rb.AddForce(moveDirection.normalized * moveSpeed * 10f * airMultiplier, ForceMode.Force);
     }
+
+    public Vector3 GetMoveDirection()
+    {
+        return moveDirection;
+    }
+
 
     private void SpeedControl()
     {
@@ -233,6 +322,12 @@ public class PlayerController : MonoBehaviour
         readyToJump = true;
     }
 
+    public void ResetJumpCount()
+    {
+        jumpCountLeft = jumpCount;
+        wasJumping = false;
+    }
+
     IEnumerator WaitForGround()
     {
         yield return new WaitUntil(() => !grounded);
@@ -252,14 +347,35 @@ public class PlayerController : MonoBehaviour
         }
         else
         {
-            animator.SetBool("isLanding", true);
-            yield return new WaitForSeconds(0.2f);
-            animator.SetBool("isLanding", false);
+            if (fallDamage > 0)
+            {
+                if (Input.GetKey(KeyCode.LeftControl))
+                {
+                    animator.SetBool("isLanding", true);
+                    animator.Play("Landing", 0, 0f);
+
+                    while (animator.GetCurrentAnimatorStateInfo(0).IsName("Landing"))
+                    {
+                        yield return null;
+                    }
+
+                    while (animator.GetCurrentAnimatorStateInfo(0).normalizedTime < 1f)
+                        yield return null;
+
+                    animator.SetBool("isLanding", false);
+ 
+                }
+                else
+                {
+                    TakeDamage(fallDamage);
+                    fallDamage = 0;
+                }
+            }
         }
 
-                print("isLanding: " + animator.GetBool("isLanding"));
-        print("AbleToLand: " + animator.GetBool("AbleToLand"));
-        print("isGrounded: " + animator.GetBool("isGrounded"));
+        //         print("isLanding: " + animator.GetBool("isLanding"));
+        // print("AbleToLand: " + animator.GetBool("AbleToLand"));
+        // print("isGrounded: " + animator.GetBool("isGrounded"));
     }
 
     IEnumerator HandleDeath()
@@ -300,7 +416,7 @@ public class PlayerController : MonoBehaviour
 
         col.height = 2f;
         col.center = new Vector3(0, 0, 0);
-        
+
         deathUI.SetActive(false);
     }
 }
