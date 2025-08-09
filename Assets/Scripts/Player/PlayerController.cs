@@ -159,12 +159,16 @@ public class PlayerController : MonoBehaviour
     public float flashDuration = 0.5f; 
     private Coroutine flashCoroutine;
 
-    public void TakeDamage(int amount)
+    public void TakeDamage(int amount, bool flash = false)
     {
         if (health <= 0) return; 
         health -= amount;
+        if (health < 0) health = 0;
 
-        FlashDamage();
+        if (flash)
+        {
+            FlashDamage();
+        }
     }
 
      public void FlashDamage()
@@ -367,7 +371,7 @@ public class PlayerController : MonoBehaviour
                 }
                 else
                 {
-                    TakeDamage(fallDamage);
+                    TakeDamage(fallDamage, true);
                     fallDamage = 0;
                 }
             }
