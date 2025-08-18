@@ -6,6 +6,9 @@ using UnityEngine.UI;
 
 public class PlayerController : MonoBehaviour
 {
+    private CheckpointCollect checkpointCollect;
+    private GemCollect gemCollect;
+
     [Header("Parkour Stats")]
     public int level;
     public int experience;
@@ -31,12 +34,25 @@ public class PlayerController : MonoBehaviour
     [Header("Camera")]
     public Transform cameraTransform;
 
+    [Header("SFX")]
+    public AudioSource step;
+    public AudioSource run;
+    public AudioSource respawn;
+    public AudioSource fall;
+    public AudioSource climb;
+    public AudioSource dead;
+    public AudioSource item;
+
     [Header("UI")]
     public GameObject deathUI;
     public GameObject healthUI;
     public Image damagedUI;
+    public TextMeshProUGUI gemCollected;
+    public TextMeshProUGUI flagCollected;
     private GameObject healthIndicator;
     private TextMeshProUGUI healthText;
+    private GameObject warningFallDamage;
+    private GameObject warningFallDamageText;
 
     [Header("Keybinds")]
     public KeyCode jumpKey = KeyCode.Space;
@@ -81,7 +97,15 @@ public class PlayerController : MonoBehaviour
 
         healthIndicator = healthUI.transform.Find("Indicator").gameObject;
         healthText = healthUI.transform.Find("HPLeft").GetComponent<TextMeshProUGUI>();
+        warningFallDamage = healthUI.transform.Find("WarningFallDamage").gameObject;
+        warningFallDamageText = healthUI.transform.Find("WarningFallDamageText").gameObject;
+        
+        checkpointCollect = GetComponent<CheckpointCollect>();
+        gemCollect = GetComponent<GemCollect>();
     }
+
+    private float stepInterval = 0.4f;
+    private float stepTimer = 0f;
 
     private void Update()
     {
@@ -95,7 +119,7 @@ public class PlayerController : MonoBehaviour
             animator.SetBool("isRunning", horizontalInput != 0 || verticalInput != 0 && isSprinting);
             animator.SetBool("isJumping", !grounded);
             animator.SetBool("isFalling", rb.linearVelocity.y < -15 && !grounded);
-            animator.SetBool("isMinFalling", rb.linearVelocity.y < -8 && !grounded);
+            animator.SetBool("isMinFalling", rb.linearVelocity.y < -10 && !grounded);
             animator.SetBool("AbleToLand", rb.linearVelocity.y > -15 && !grounded);
             animator.SetBool("isDead", health <= 0);
 
@@ -103,16 +127,28 @@ public class PlayerController : MonoBehaviour
             {
                 fallDamage = Mathf.Max(0, fallDamageThreshold - (int)(rb.linearVelocity.y / 10));
             }
-        }
-
-        if (health <= 0)
-        {
-            Died();
+            else
+            {
+                fallDamage = 0;
+            }
         }
 
         // Update health UI
         healthText.text = health.ToString() + "%";
         healthIndicator.transform.localScale = new Vector3(health / (float)maxHealth, 1, 1);
+        warningFallDamage.SetActive(fallDamage > 0);
+        warningFallDamageText.SetActive(fallDamage > 0);
+
+        // Update gem and flag collected UI
+        if (gemCollect != null)
+        {
+            gemCollected.text = "Gems Collected : " + gemCollect.gemCount;
+        }
+
+        if (checkpointCollect != null)
+        {
+            flagCollected.text = "Flags Collected : " + checkpointCollect.checkpointCount;
+        }
 
         // print("isIdle : " + animator.GetBool("isIdle"));
         // print("isGrounded : " + animator.GetBool("isGrounded"));
@@ -139,6 +175,35 @@ public class PlayerController : MonoBehaviour
             whatIsVoid
         );
 
+        if (grounded)
+        {
+            if (moveDirection.magnitude > 0.1f)
+            {
+                stepTimer -= Time.deltaTime;
+                if (stepTimer <= 0f)
+                {
+                    if (isSprinting)
+                        playSFX("run");
+                    else
+                        playSFX("step");
+
+                    stepTimer = stepInterval; // reset timer
+                }
+            }
+            else
+            {
+                stepTimer = 0f;
+                stopSFX("step");
+                stopSFX("run");
+            }
+        }
+        else
+        {
+            stepTimer = 0f;
+            stopSFX("step");
+            stopSFX("run");
+        }
+
         MyInput();
         SpeedControl();
 
@@ -156,14 +221,92 @@ public class PlayerController : MonoBehaviour
             rb.linearDamping = 0;
         }
     }
-    public float flashDuration = 0.5f; 
+
+    public void playSFX(string soundName)
+    {
+        AudioSource audioSource = null;
+
+        switch (soundName)
+        {
+            case "step":
+                audioSource = step;
+                break;
+            case "run":
+                audioSource = run;
+                break;
+            case "respawn":
+                audioSource = respawn;
+                break;
+            case "fall":
+                audioSource = fall;
+                break;
+            case "climb":
+                audioSource = climb;
+                break;
+            case "dead":
+                audioSource = dead;
+                break;
+            case "item":
+                audioSource = item;
+                break;
+        }
+
+        if (audioSource != null)
+        {
+            audioSource.Play();
+        }
+    }
+
+    public void stopSFX(string soundName)
+    {
+        AudioSource audioSource = null;
+
+        switch (soundName)
+        {
+            case "step":
+                audioSource = step;
+                break;
+            case "run":
+                audioSource = run;
+                break;
+            case "respawn":
+                audioSource = respawn;
+                break;
+            case "fall":
+                audioSource = fall;
+                break;
+            case "climb":
+                audioSource = climb;
+                break;
+            case "dead":
+                audioSource = dead;
+                break;
+            case "item":
+                audioSource = item;
+                break;
+        }
+
+        if (audioSource != null && audioSource.isPlaying)
+        {
+            audioSource.Stop();
+        }
+    }
+
+    public float flashDuration = 0.5f;
     private Coroutine flashCoroutine;
 
     public void TakeDamage(int amount, bool flash = false)
     {
-        if (health <= 0) return; 
+        if (health <= 0) return;
         health -= amount;
-        if (health < 0) health = 0;
+        if (health <= 0)
+        {
+            Died();
+            health = 0;
+            playSFX("dead");
+        }
+
+        playSFX("fall");
 
         if (flash)
         {
@@ -171,7 +314,7 @@ public class PlayerController : MonoBehaviour
         }
     }
 
-     public void FlashDamage()
+    public void FlashDamage()
     {
         if (flashCoroutine != null)
             StopCoroutine(flashCoroutine);
@@ -292,7 +435,6 @@ public class PlayerController : MonoBehaviour
         return moveDirection;
     }
 
-
     private void SpeedControl()
     {
         Vector3 flatVel = new Vector3(rb.linearVelocity.x, 0f, rb.linearVelocity.z);
@@ -367,13 +509,13 @@ public class PlayerController : MonoBehaviour
                         yield return null;
 
                     animator.SetBool("isLanding", false);
- 
+
                 }
                 else
                 {
                     TakeDamage(fallDamage, true);
-                    fallDamage = 0;
                 }
+                fallDamage = 0;
             }
         }
 
@@ -403,7 +545,7 @@ public class PlayerController : MonoBehaviour
         Quaternion targetRot = Quaternion.LookRotation(transform.position - targetPos);
         float t = 0;
 
-        while (t < 1f)
+        while (t < 1.5f)
         {
             t += Time.unscaledDeltaTime * flySpeed;
 
@@ -414,6 +556,8 @@ public class PlayerController : MonoBehaviour
         }
 
         yield return new WaitForSecondsRealtime(3f);
+        playSFX("respawn");
+
         animator.speed = 1f;
         transform.position = lastPosition;
         health = maxHealth;

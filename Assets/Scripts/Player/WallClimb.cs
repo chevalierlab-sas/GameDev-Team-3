@@ -77,6 +77,7 @@ public class WallClimb : MonoBehaviour
 
         isClimbing = false; // Reset climbing state to allow for next climb
         print("Climbing... Remaining Climb Count: " + climbCount);
+        playerController.playSFX("climb");
     }
 
     public void ResetClimbCount()

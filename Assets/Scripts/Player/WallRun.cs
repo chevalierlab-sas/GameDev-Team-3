@@ -21,8 +21,8 @@ public class WallRun : MonoBehaviour
 
     [Header("Movement")]
     public float wallRunSpeed = 8f;
-    public float wallStickForce = 15f;   
-    public float wallDownSpeed = 1.2f;    
+    public float wallStickForce = 15f;
+    public float wallDownSpeed = 1.2f;
     public int maxWallRun = 3;
 
     [Header("UI")]
@@ -46,6 +46,8 @@ public class WallRun : MonoBehaviour
     float wallRunTimer = 0f;
     bool jumpRequested = false;
     int wallRunCount = 0;
+
+    bool ableToWallRun = true;
 
     void Start()
     {
@@ -95,7 +97,13 @@ public class WallRun : MonoBehaviour
             WallRunUI.SetActive(false);
         }
 
-        if (canWallRun && wallRunCount > 0)
+        if (!ableToWallRun)
+        {
+            StopWallRun();
+            return;
+        }
+
+        if (canWallRun && wallRunCount > 0 && Input.GetKey(KeyCode.LeftControl))
         {
             currentWallNormal = right ? hitRight.normal : hitLeft.normal;
             StartWallRun();
@@ -151,6 +159,8 @@ public class WallRun : MonoBehaviour
         playerController.ResetJumpCount();
         wallClimb.ResetClimbCount();
 
+        playerController.playSFX("run");
+
         isWallRunning = true;
         wallRunTimer = 0f;
         rb.useGravity = false;
@@ -164,7 +174,11 @@ public class WallRun : MonoBehaviour
         isWallRunning = false;
         rb.useGravity = true;
 
+        playerController.stopSFX("run");
+
         Indicator.SetActive(false);
+
+        StartCoroutine(DebounceWallRun());
     }
 
     bool IsGrounded()
@@ -182,5 +196,12 @@ public class WallRun : MonoBehaviour
         Vector3 origin = transform.position + Vector3.up * (col.height * 0.5f - col.radius * 0.5f);
         Gizmos.DrawLine(origin, origin + transform.right * wallCheckDistance);
         Gizmos.DrawLine(origin, origin - transform.right * wallCheckDistance);
+    }
+
+    IEnumerator DebounceWallRun()
+    {
+        ableToWallRun = false;
+        yield return new WaitForSeconds(0.5f);
+        ableToWallRun = true;
     }
 }
